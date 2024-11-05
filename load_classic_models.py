@@ -1,9 +1,6 @@
-import re
 import joblib
 import glob
-import re
-import string
-import spacy
+from utils import *
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import LabelEncoder
@@ -16,58 +13,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score
 # Load the Romanian spaCy model
-nlp_ro = spacy.load("ro_core_news_sm")
-nlp_ro.max_length = 4000000  # Or any value greater than your maximum text length
+
 # Step 2: Encode labels
 labels=['16', '16', '16', '17', '17', '17', '17', '18', '18', '18', '18', '19', '19', '19', '19', '20', '20', '20', '21', '21']
 label_encoder = LabelEncoder()
 encoded_labels = label_encoder.fit_transform(labels)
 
-def has_vowel(word):
-    """Check if the word contains at least one vowel."""
-    vowels = "aeiouăâî"
-    return any(char in vowels for char in word)
-
-
-def prep(text):
-    # Lowercase the text
-    text = text.lower()
-
-    # Replace specified characters with Romanian diacritics
-    text = text.replace("[", "ă")
-    text = text.replace("{", "ă")
-    text = text.replace("`", "â")
-    text = text.replace("=", "ș")
-    text = text.replace("\\", "ț")  # Ensure the backslash is handled correctly
-    text = text.replace("]", "î")
-    text = text.replace("}", "Î")
-    text = text.replace("|", "Ț")
-    text = text.replace("º", "ș")
-    text = text.replace("§", "")
-    text = text.replace("˘", "")
-
-    # Remove URLs
-    text = re.sub(r'http\S+|www\S+', '', text)
-
-    # Remove Roman numerals (I to XII and beyond)
-    roman_numeral_pattern = r'\b(m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3}))\b'
-    text = re.sub(roman_numeral_pattern, '', text)
-
-    # Process the text with spaCy
-    doc = nlp_ro(text)
-
-    # Filter out unwanted tokens and lemmatize
-    sanitized_tokens = []
-    for token in doc:
-        # Conditions to filter tokens
-        if (token.is_alpha and not token.is_stop and
-                len(token) > 1 and has_vowel(token.lemma_)):  # Check for vowel presence
-            sanitized_tokens.append(token.lemma_)  # Use the lemma of the token
-
-    # Join the sanitized tokens back into a single string
-    sanitized_text = ' '.join(sanitized_tokens)
-
-    return sanitized_text
 # Sample text for prediction
 sample_text = """ ce se petrece... Şi ne pomenim într-una din zile că părintele vine la şcoală şi ne aduce un scaun nou şi
     lung, şi
