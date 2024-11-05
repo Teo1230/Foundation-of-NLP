@@ -1,71 +1,101 @@
-
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
-import torch
-from torch.utils.data import Dataset
 from utils import *
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
+from torch.utils.data import DataLoader, Dataset
+from sklearn.preprocessing import LabelEncoder
+import joblib
 
-
-# Load and preprocess the text data
+# Assuming load_text and prep are defined functions
+# Step 1: Load the data
 txt = load_text()
-txt = {century: [prep(text) for text in texts] for century, texts in txt.items()}
+st = sorted(txt)
+texts, labels = [], []
 
-# Step 3: Prepare Data for BERT
+for century in st:
+    for data in txt[century]:
+        text = prep(data)  # Process text data
+        texts.append(text)
+        labels.append(century)
+
+# Step 2: Encode labels
+label_encoder = LabelEncoder()
+encoded_labels = label_encoder.fit_transform(labels)
+
+# Step 3: Save the Label Encoder
+joblib.dump(label_encoder, './label_encoder.pkl')  # Save the label encoder
+
+# Step 4: Define a Dataset class
 class TextDataset(Dataset):
-    def __init__(self, texts, labels, tokenizer, max_length=512):
+    def __init__(self, texts, labels, tokenizer):
         self.texts = texts
         self.labels = labels
         self.tokenizer = tokenizer
-        self.max_length = max_length
 
     def __len__(self):
         return len(self.texts)
 
     def __getitem__(self, idx):
-        encodings = self.tokenizer(
-            self.texts[idx],
-            truncation=True,
+        text = self.texts[idx]
+        label = self.labels[idx]
+        encoding = self.tokenizer(
+            text,
+            return_tensors='pt',
             padding='max_length',
-            max_length=self.max_length,
-            return_tensors="pt"
+            truncation=True,
+            max_length=512
         )
-        item = {key: val.squeeze() for key, val in encodings.items()}
-        item['labels'] = torch.tensor(self.labels[idx], dtype=torch.long)
-        return item
+        return {
+            'input_ids': encoding['input_ids'].flatten(),
+            'attention_mask': encoding['attention_mask'].flatten(),
+            'labels': torch.tensor(label)
+        }
 
-# Convert the century labels to numerical values for classification
-century_to_label = {century: idx for idx, century in enumerate(sorted(txt.keys()))}
-texts = [text for century_texts in txt.values() for text in century_texts]
-labels = [century_to_label[century] for century, century_texts in txt.items() for _ in century_texts]
+# Step 5: Load BERT model and tokenizer
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=len(label_encoder.classes_))
 
-# Load BERT tokenizer and model
-tokenizer = AutoTokenizer.from_pretrained("bert-base-multilingual-cased")
-model = AutoModelForSequenceClassification.from_pretrained("bert-base-multilingual-cased", num_labels=len(century_to_label))
+# Step 6: Create DataLoader for the entire dataset
+dataset = TextDataset(texts, encoded_labels, tokenizer)
+data_loader = DataLoader(dataset, batch_size=16, shuffle=True)
 
-# Create dataset and dataloader
-dataset = TextDataset(texts, labels, tokenizer, max_length=512)
+# Step 7: Define parameter tuning options
+learning_rates = [1e-5, 2e-5]  # Example learning rates
+epochs_list = [5, 10]  # Number of epochs to try
 
-# Step 4: Define Training Arguments and Trainer
-training_args = TrainingArguments(
-    output_dir="./results",
-    evaluation_strategy="epoch",
-    learning_rate=2e-5,
-    per_device_train_batch_size=8,
-    per_device_eval_batch_size=8,
-    num_train_epochs=3,
-    weight_decay=0.01,
-)
+# Step 8: Training the model with parameter tuning
+for lr in learning_rates:
+    for epochs in epochs_list:
+        print(f"\nTraining with learning rate: {lr} and epochs: {epochs}")
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+        model.train()
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=dataset,
-    eval_dataset=dataset,
-)
+        for epoch in range(epochs):
+            total_loss = 0
+            total_correct = 0  # Variable to keep track of correct predictions
+            total_samples = 0   # Variable to keep track of total samples
 
-# Step 5: Train the Model
-trainer.train()
+            for batch in data_loader:
+                optimizer.zero_grad()
+                outputs = model(**batch)
+                loss = outputs.loss
+                total_loss += loss.item()
 
-# Step 6: Save the Trained Model and Tokenizer
+                # Calculate predictions
+                logits = outputs.logits
+                predictions = torch.argmax(logits, dim=1)
+
+                # Update total correct and total samples
+                total_correct += (predictions == batch['labels']).sum().item()
+                total_samples += predictions.size(0)
+
+                loss.backward()
+                optimizer.step()
+
+            avg_loss = total_loss / len(data_loader)
+            accuracy = total_correct / total_samples  # Calculate accuracy
+            print(f"Epoch {epoch + 1}, Average Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
+
+# Step 9: Save the Trained Model and Tokenizer
 output_dir = "./saved_model"
 model.save_pretrained(output_dir)
 tokenizer.save_pretrained(output_dir)
