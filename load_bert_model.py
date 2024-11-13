@@ -39,6 +39,7 @@ def predict_century(input_text):
 
 # Step 4: Test the prediction with an example input text
 # Example input text
+
 input_text= """
 astfel răsturnat... Continuaţi."
 Hegel răsturnat! Nu rîdeam cu gura pînă la urechi, cum făcea Matilda, dar

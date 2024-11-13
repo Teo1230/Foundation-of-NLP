@@ -3,9 +3,10 @@ import re
 import spacy
 import string
 
-def load_text():
+def load_text(dataset='train'):
     path = os.getcwd()  # Current working directory
-    path_centuries = os.path.join(path, 'century')  # Path to 'century' folder
+    path_data = os.path.join(path, dataset)
+    path_centuries = os.path.join(path_data, 'century')  # Path to 'century' folder
     txt = {}  # Dictionary to store raw text by century
 
     # Loop through each century folder
